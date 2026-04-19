@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Museum VR Calibrator</title>
+  <title>Museum VR - Claude's Engine</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; width: 100vw; height: 100vh; font-family: -apple-system, sans-serif; }
+    body { background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
 
     #overlay {
       position: fixed; inset: 0; background: #0a0a0a;
@@ -15,7 +15,7 @@
     }
     #overlay h1 { font-size: 26px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; }
     #overlay p  { font-size: 14px; color: rgba(255,255,255,0.5); max-width: 280px; line-height: 1.7; }
-    #enter-btn  {
+    #enter-btn {
       background: #fff; color: #000; border: none; border-radius: 50px;
       padding: 16px 52px; font-size: 17px; font-weight: 700; cursor: pointer;
     }
@@ -25,16 +25,11 @@
       position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
       background: #000; z-index: 5; display: none; pointer-events: none;
     }
-    
-    /* BIG Calibration HUD */
     #hud {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      text-align: center; color: #fff; font-size: 24px; font-weight: bold; letter-spacing: 1px;
-      z-index: 10; display: none; pointer-events: none; text-shadow: 0px 4px 10px rgba(0,0,0,1);
-      width: 100%;
+      position: fixed; bottom: 24px; width: 100%; text-align: center;
+      color: rgba(255,255,255,0.35); font-size: 12px; letter-spacing: 1px;
+      z-index: 10; display: none; pointer-events: none;
     }
-    .hud-sub { font-size: 14px; color: #aaa; margin-top: 10px; }
-    
     canvas { display: block; }
   </style>
 </head>
@@ -42,16 +37,12 @@
 
   <div id="overlay">
     <h1>🏛️ Museum VR</h1>
-    <p>Tap below, put your phone in the headset.<br><br>The image will slide back and forth. <b>Tap the screen when it aligns perfectly with your eyes!</b></p>
+    <p>Tap below to enable motion sensors, then place your phone in your Cardboard goggles.</p>
     <button id="enter-btn" disabled>Loading scan…</button>
     <p id="status">Connecting…</p>
   </div>
-
   <div id="divider"></div>
-  <div id="hud">
-    <div id="hud-pan">SWEEPING...</div>
-    <div class="hud-sub">Tap screen when image is centered!</div>
-  </div>
+  <div id="hud">MOVE YOUR HEAD TO LOOK AROUND</div>
 
   <script type="importmap">
   {
@@ -64,18 +55,27 @@
 
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+    import { GLTFLoader }   from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader }  from 'three/addons/loaders/DRACOLoader.js';
+    import { StereoEffect } from 'three/addons/effects/StereoEffect.js';
 
     const GLB_URL = 'https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb';
 
-    const PR = Math.min(window.devicePixelRatio, 2);
+    // ── Renderer ──────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: false });
-    renderer.setPixelRatio(PR);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
 
+    // ── StereoEffect ──────────────────────────────────────────────
+    const effect = new StereoEffect(renderer);
+    effect.setSize(window.innerWidth, window.innerHeight);
+
+    // THE FIX: Lowering eye separation so the cameras don't straddle your tiny model
+    effect.setEyeSeparation(0.005);
+
+    // ── Scene ─────────────────────────────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
     scene.add(new THREE.AmbientLight(0xffffff, 2.0));
@@ -83,75 +83,12 @@
     key.position.set(5, 10, 5);
     scene.add(key);
 
+    // ── Camera ────────────────────────────────────────────────────
     const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
     const baseCamPos = new THREE.Vector3(0, 2.2, 10);
+    camera.position.copy(baseCamPos);
 
-    // Gentler 3D depth to prevent straddling
-    const stereoCamera = new THREE.StereoCamera();
-    stereoCamera.eyeSep = 0.005; 
-
-    const rtW = Math.floor(window.innerWidth  * PR);
-    const rtH = Math.floor(window.innerHeight * PR);
-    const renderTarget = new THREE.WebGLRenderTarget(rtW, rtH);
-
-    // ── DISTORTION SHADER WITH LIVE PAN UNIFORM ──
-    const distortMat = new THREE.ShaderMaterial({
-      uniforms: {
-        tDiffuse: { value: renderTarget.texture },
-        k1:       { value: 0.15 }, 
-        k2:       { value: 0.05 },
-        pan:      { value: 0.0 } // Controlled by the sweeper!
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float k1;
-        uniform float k2;
-        uniform float pan;
-        varying vec2 vUv;
-
-        vec2 barrel(vec2 uv, vec2 center) {
-          vec2 d = uv - center;
-          d.x *= 2.0;                        
-          float r2 = dot(d, d);
-          float r4 = r2 * r2;
-          d /= (1.0 + k1 * r2 + k2 * r4);   
-          d.x /= 2.0;
-          return center + d;
-        }
-
-        void main() {
-          vec2 uv = vUv;
-          vec2 s;
-          
-          if (uv.x < 0.5) {
-            s = barrel(uv, vec2(0.25, 0.5)); 
-            s.x -= pan; 
-            if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
-              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
-            }
-          } else {
-            s = barrel(uv, vec2(0.75, 0.5)); 
-            s.x += pan; 
-            if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
-              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
-            }
-          }
-          gl_FragColor = texture2D(tDiffuse, s);
-        }
-      `
-    });
-
-    const postScene = new THREE.Scene();
-    const postCam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), distortMat));
-
+    // ── Device orientation → camera rotation ──────────────────────
     const camQuat     = new THREE.Quaternion();
     const orient      = new THREE.Euler();
     const worldAdjust = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
@@ -173,72 +110,26 @@
       camQuat.multiply(screenQ);
     }
 
-    // ── SWEEPER VARIABLES ──
+    // ── Render loop ───────────────────────────────────────────────
     let vrActive = false;
-    let sweeping = false;
-    let sweepDir = 1;
-    let panSpeed = 0.03; // Slides slightly every second
-    let lastTime = performance.now();
-
-    function renderVR() {
-      const w  = renderTarget.width;
-      const h  = renderTarget.height;
-      const hw = Math.floor(w / 2);
-
-      camera.position.copy(baseCamPos);
-      camera.quaternion.copy(camQuat);
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateMatrixWorld(); 
-      
-      stereoCamera.update(camera);
-
-      renderer.setRenderTarget(renderTarget);
-      renderer.setScissorTest(true);
-
-      renderer.setViewport(0, 0, hw, h);
-      renderer.setScissor(0, 0, hw, h);
-      renderer.render(scene, stereoCamera.cameraL);
-
-      renderer.setViewport(hw, 0, hw, h);
-      renderer.setScissor(hw, 0, hw, h);
-      renderer.render(scene, stereoCamera.cameraR);
-
-      renderer.setRenderTarget(null);
-      renderer.setScissorTest(false);
-      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-      renderer.render(postScene, postCam);
-    }
 
     (function animate() {
       requestAnimationFrame(animate);
       
+      // Update camera orientation every frame
+      camera.quaternion.copy(camQuat);
+      camera.position.copy(baseCamPos);
+
       if (vrActive) {
-        // Auto-Sweep Logic
-        if (sweeping) {
-          let now = performance.now();
-          let dt = (now - lastTime) / 1000;
-          lastTime = now;
-          
-          distortMat.uniforms.pan.value += (panSpeed * sweepDir * dt);
-          
-          // Bounce back and forth between extreme alignments
-          if (distortMat.uniforms.pan.value > 0.15 || distortMat.uniforms.pan.value < -0.15) {
-            sweepDir *= -1; 
-          }
-        }
-        renderVR();
+        effect.render(scene, camera);
       } else {
-        renderer.setRenderTarget(null);
-        renderer.setScissorTest(false);
-        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
         camera.aspect = window.innerWidth / window.innerHeight;
-        camera.quaternion.copy(camQuat);
-        camera.position.copy(baseCamPos);
         camera.updateProjectionMatrix();
         renderer.render(scene, camera);
       }
     })();
 
+    // ── Load GLB ──────────────────────────────────────────────────
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
     const loader = new GLTFLoader();
@@ -251,12 +142,12 @@
       GLB_URL,
       (gltf) => {
         const model = gltf.scene;
-        model.scale.setScalar(1.0); // Restored safe scale
+        model.scale.setScalar(1.0);
         const box = new THREE.Box3().setFromObject(model);
         model.position.y = -box.min.y;
         scene.add(model);
         statusEl.textContent = '✓ Scan ready';
-        btnEl.textContent    = 'Enter VR Calibration';
+        btnEl.textContent    = 'Enter VR';
         btnEl.disabled       = false;
       },
       (xhr) => {
@@ -268,42 +159,11 @@
         statusEl.textContent = '⚠ Failed to load scan';
         btnEl.textContent    = 'Enter VR (scan missing)';
         btnEl.disabled       = false;
+        console.error('GLB load error:', err);
       }
     );
 
-    // ── TAP TO LOCK LOGIC ──
-    window.addEventListener('touchstart', (e) => {
-      if (sweeping) {
-        sweeping = false; // Freeze the image!
-        const finalPan = distortMat.uniforms.pan.value.toFixed(3);
-        
-        // Update the big text so you can read it when you take the headset off
-        document.getElementById('hud').style.background = "rgba(0,0,0,0.8)";
-        document.getElementById('hud').style.padding = "20px";
-        document.getElementById('hud').innerHTML = 
-          `<span style="color:#0f0;">LOCKED!</span><br><br>
-           Your perfect PAN is:<br>
-           <span style="font-size:40px; color:#fff;">${finalPan}</span><br><br>
-           <span style="font-size:14px; color:#aaa;">(Take off headset and tell Gemini)</span>`;
-      }
-    });
-
-    // ── CLICK TO LOCK LOGIC (Just in case you click instead of touch) ──
-    window.addEventListener('mousedown', (e) => {
-      if (e.target === btnEl) return; // Don't trigger on the start button
-      if (sweeping) {
-        sweeping = false;
-        const finalPan = distortMat.uniforms.pan.value.toFixed(3);
-        document.getElementById('hud').style.background = "rgba(0,0,0,0.8)";
-        document.getElementById('hud').style.padding = "20px";
-        document.getElementById('hud').innerHTML = 
-          `<span style="color:#0f0;">LOCKED!</span><br><br>
-           Your perfect PAN is:<br>
-           <span style="font-size:40px; color:#fff;">${finalPan}</span><br><br>
-           <span style="font-size:14px; color:#aaa;">(Take off headset and tell Gemini)</span>`;
-      }
-    });
-
+    // ── Enter VR button ───────────────────────────────────────────
     btnEl.addEventListener('click', async () => {
       btnEl.disabled = true;
 
@@ -323,24 +183,24 @@
 
       window.addEventListener('deviceorientation', onOrientation, true);
       try { await document.documentElement.requestFullscreen?.(); } catch (_) {}
-      try { await screen.orientation?.lock?.('landscape');         } catch (_) {}
+      try { await screen.orientation?.lock?.('landscape'); }         catch (_) {}
 
-      document.getElementById('overlay').style.display  = 'none';
-      document.getElementById('divider').style.display  = 'block';
-      document.getElementById('hud').style.display      = 'block';
-      
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('divider').style.display = 'block';
+      document.getElementById('hud').style.display     = 'block';
       vrActive = true;
-      sweeping = true;
-      lastTime = performance.now();
+
+      setTimeout(() => { document.getElementById('hud').style.display = 'none'; }, 4000);
     });
 
+    // ── Resize ────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderTarget.setSize(
-        Math.floor(window.innerWidth  * PR),
-        Math.floor(window.innerHeight * PR)
-      );
+      effect.setSize(window.innerWidth, window.innerHeight);
     });
+
   </script>
 </body>
 </html>
