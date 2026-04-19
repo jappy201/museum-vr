@@ -203,6 +203,23 @@
       z-index: 10; display: none; pointer-events: none;
       font-family: 'Cinzel', serif; text-transform: uppercase;
     }
+    /* ── Back button — lives above the lens view area ── */
+    #back-btn {
+      position: fixed;
+      top: 0; left: 50%; transform: translateX(-50%);
+      z-index: 20; display: none;
+      background: rgba(0,0,0,0.75);
+      border: 1px solid rgba(201,168,76,0.5);
+      color: #c9a84c;
+      font-family: "Cinzel", serif;
+      font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+      padding: 7px 22px;
+      cursor: pointer;
+      border-radius: 0 0 6px 6px;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      touch-action: manipulation;
+    }
     canvas { display: block; }
   </style>
 </head>
@@ -241,6 +258,7 @@
 
   <div id="divider"></div>
   <div id="hud">Move your head to look around</div>
+  <button id="back-btn">&#8592; Change Exhibit</button>
 
   <script type="importmap">
   {
