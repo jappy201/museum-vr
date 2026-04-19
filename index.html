@@ -172,30 +172,28 @@
       (gltf) => {
         const model = gltf.scene;
 
-        // 1. Measure raw bounding box
-        const box    = new THREE.Box3().setFromObject(model);
-        const centre = box.getCenter(new THREE.Vector3());
-        const size   = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
+// --- YOUR MANUAL CONTROLS ---
 
-        // 2. Scale so longest axis = 4 units
-        const scale = 4 / maxDim;
-        model.scale.setScalar(scale);
+        // 1. Scale the model (1.0 is the size it was in Blender)
+        // If the museum still feels tiny, increase this (e.g., 2.0 or 5.0)
+        // If the museum feels too massive, decrease this (e.g., 0.5 or 0.1)
+        const MY_SCALE = 1.0; 
+        model.scale.setScalar(MY_SCALE);
 
-        // 3. Centre horizontally; plant floor at y = 0
-        model.position.x = -centre.x * scale;
-        model.position.y = -box.min.y * scale;
-        model.position.z = -centre.z * scale;
-
+        // 2. Plant the floor at exactly Y = 0 (so your camera height works properly)
+        const box = new THREE.Box3().setFromObject(model);
+        model.position.y = -box.min.y; 
+        
         scene.add(model);
 
-        // 4. Recompute box in world space to get exact floor
-        const worldBox = new THREE.Box3().setFromObject(model);
-        baseCamPos.set(
-          (worldBox.min.x + worldBox.max.x) / 2,
-          worldBox.min.y + EYE_HEIGHT,
-          (worldBox.min.z + worldBox.max.z) / 2
-        );
+        // 3. Set your exact starting position!
+        // You will need to guess-and-check these numbers by refreshing the page.
+        const startX = 0;   // Move left (negative) or right (positive)
+        const startY = 1.6; // Your height from the floor (1.6 meters is average)
+        const startZ = 0;   // Move forward (negative) or backward (positive)
+        
+        baseCamPos.set(startX, startY, startZ);
+        // ----------------------------
         camera.position.copy(baseCamPos);
 
         statusEl.textContent = '✓ Scan ready';
