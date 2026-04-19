@@ -105,25 +105,24 @@
       font-family: "Cinzel", serif; text-transform: uppercase;
     }
 
-/* Microscopic, ultra-dim back button to hide from VR lens distortion */
+/* Compact back button: Visible, but small enough to avoid lens distortion */
     #back-btn {
       position: fixed;
       top: 0; left: 50%; transform: translateX(-50%);
       z-index: 9999;
       display: none;
-      background: rgba(0,0,0,0.1); /* Almost entirely transparent */
-      border: 1px solid rgba(201,168,76,0.15); /* Barely visible gold border */
+      background: rgba(0, 0, 0, 0.85); /* Solid dark background */
+      border: 1px solid rgba(201, 168, 76, 0.8); /* Clear gold border */
       border-top: none;
-      color: rgba(201,168,76,0.2); /* Barely visible gold text */
+      color: rgba(201, 168, 76, 1.0); /* Bright gold text */
       font-family: "Cinzel", serif;
-      font-size: 8px; /* Extremely small text */
-      letter-spacing: 1px; text-transform: uppercase;
-      padding: 3px 10px; /* Shrunk down to hug the text tightly */
+      font-size: 8px; /* Readable text size */
+      letter-spacing: 2px; text-transform: uppercase;
+      padding: 6px 16px; /* Enough padding for a finger to easily tap */
       cursor: pointer;
-      border-radius: 0 0 6px 6px;
+      border-radius: 0 0 8px 8px;
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
-      /* Removed min-width so it stops stretching across your peripheral vision */
     }
     canvas { display: block; }
   </style>
