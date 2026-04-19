@@ -1,346 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Museum VR</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; width: 100vw; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-
-    #overlay {
+    body { background: #000; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
+    
+    #ios-permission-overlay {
       position: fixed; inset: 0; background: #0a0a0a;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 18px; z-index: 999; color: #fff;
-      text-align: center; padding: 40px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; color: #fff; text-align: center;
     }
-    #overlay h1 { font-size: 26px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; }
-    #overlay .subtitle { font-size: 14px; color: rgba(255,255,255,0.5); max-width: 280px; line-height: 1.7; }
-
-    #enter-btn {
-      background: #fff; color: #000; border: none;
-      border-radius: 50px; padding: 16px 52px;
-      font-size: 17px; font-weight: 700; cursor: pointer;
-      margin-top: 8px; letter-spacing: 1px;
+    #ios-permission-overlay h1 { font-size: 24px; letter-spacing: 2px; }
+    #ios-permission-overlay p { color: #888; font-size: 14px; margin-bottom: 20px; max-width: 280px;}
+    #start-btn {
+      background: #fff; color: #000; border: none; border-radius: 50px;
+      padding: 16px 40px; font-size: 16px; font-weight: bold; cursor: pointer;
     }
-    #enter-btn:disabled { opacity: 0.4; cursor: default; }
-    #load-status { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 4px; min-height: 18px; }
-
-    #hud {
-      position: fixed; bottom: 24px; width: 100%; text-align: center;
-      color: rgba(255,255,255,0.35); font-size: 12px; letter-spacing: 1px;
-      z-index: 10; display: none; pointer-events: none;
-    }
-    #divider {
-      position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
-      background: #000; z-index: 5; display: none; pointer-events: none;
-    }
-    canvas { display: block; }
   </style>
 </head>
 <body>
-  <div id="overlay">
-    <h1>&#127963; Museum VR</h1>
-    <p class="subtitle">
-      Tap the button below, then place your phone into your cardboard goggles.<br><br>
-      Move your head to look around the scan.
-    </p>
-    <button id="enter-btn" disabled>Loading scan…</button>
-    <p id="load-status">Connecting…</p>
+
+  <div id="ios-permission-overlay">
+    <h1>🏛️ Museum VR</h1>
+    <p>Tap below to enable motion sensors, then tap the VR Goggles icon in the bottom right corner.</p>
+    <button id="start-btn">Enable Motion Access</button>
   </div>
-  <div id="divider"></div>
-  <div id="hud">MOVE YOUR HEAD TO LOOK AROUND</div>
 
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-    }
-  }
-  </script>
+  <a-scene 
+    device-orientation-permission-ui="enabled: false"
+    gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/v1/decoders/;">
+    
+    <a-assets>
+      <a-asset-item id="museum" src="https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb"></a-asset-item>
+    </a-assets>
 
-  <script type="module">
-    import * as THREE from 'three';
-    import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+    <a-entity gltf-model="#museum" position="0 0 0" scale="1 1 1"></a-entity>
 
-    const GLB_URL =
-      'https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb';
+    <a-entity position="0 1.6 10">
+      <a-camera look-controls></a-camera>
+    </a-entity>
 
-    // ── Renderer ──────────────────────────────────────────────────
-    const PR = Math.min(window.devicePixelRatio, 2);
-    const renderer = new THREE.WebGLRenderer({ antialias: false });
-    renderer.setPixelRatio(PR);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    document.body.appendChild(renderer.domElement);
+    <a-light type="ambient" intensity="2.0"></a-light>
+    <a-light type="directional" position="5 10 5" intensity="0.8"></a-light>
 
-    // ── Scene ─────────────────────────────────────────────────────
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111111);
-    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
-    const key = new THREE.DirectionalLight(0xffffff, 0.8);
-    key.position.set(5, 10, 5);
-    scene.add(key);
+  </a-scene>
 
-    // ── Camera ────────────────────────────────────────────────────
-    const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
-    camera.position.set(0, 1.6, 0);
+  <script>
+    // 3. The iOS Safari Unlock Script
+    const btn = document.getElementById('start-btn');
+    const overlay = document.getElementById('ios-permission-overlay');
 
-    // Base position (updated after model loads so camera sits at floor + eye height)
-    const baseCamPos = new THREE.Vector3(0, 1.6, 0);
-    const HALF_IPD   = 0.064;   // half of 64 mm interpupillary distance
-    const EYE_HEIGHT = 1.6;     // metres above floor
-
-    // ── Off-screen render target for distortion pass ──────────────
-    const rtW = Math.floor(window.innerWidth  * PR);
-    const rtH = Math.floor(window.innerHeight * PR);
-    const renderTarget = new THREE.WebGLRenderTarget(rtW, rtH);
-
-    // ── Barrel distortion shader ──────────────────────────────────
-    // Cardboard lenses cause pincushion distortion; we pre-apply barrel
-    // distortion so the two effects cancel and the image looks flat.
-    // k1 / k2 control strength — tune if goggles look over/under corrected.
-    const distortMat = new THREE.ShaderMaterial({
-      uniforms: {
-        tDiffuse: { value: renderTarget.texture },
-        k1:       { value: 0.25 },
-        k2:       { value: 0.05 }
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float k1;
-        uniform float k2;
-        varying vec2 vUv;
-
-        vec2 barrel(vec2 uv, vec2 center) {
-          vec2 d = uv - center;
-          d.x *= 2.0;                        // compensate for half-width eye
-          float r2 = dot(d, d);
-          float r4 = r2 * r2;
-          d /= (1.0 + k1 * r2 + k2 * r4);   // barrel warp
-          d.x /= 2.0;
-          return center + d;
-        }
-
-          void main() {
-          vec2 uv = vUv;
-          vec2 s;
-
-          // --- YOUR NEW PANNING CONTROL ---
-          // This physically slides the pixels across your screen!
-          // Positive number = Pinches images inward (closer together)
-          // Negative number = Pushes images outward (further apart)
-          float PAN = -0.08; 
-
-          if (uv.x < 0.5) {
-            s = barrel(uv, vec2(0.25, 0.5)); // Keep the warp dead-center
-            s.x -= PAN; // Slide the left eye's image to the right (inward)
-            
-            if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
-              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
-            }
-          } else {
-            s = barrel(uv, vec2(0.75, 0.5)); // Keep the warp dead-center
-            s.x += PAN; // Slide the right eye's image to the left (inward)
-            
-            if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
-              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
-            }
+    btn.addEventListener('click', async () => {
+      // Ask Apple for Gyroscope Permissions
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission !== 'granted') {
+            alert('Safari motion access denied. Settings → Safari → Motion & Orientation Access.');
+            return;
           }
-          gl_FragColor = texture2D(tDiffuse, s);
-        }
-      `
-    });
-
-    // Full-screen quad for the post-process blit
-    const postScene = new THREE.Scene();
-    const postCam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), distortMat));
-
-    // ── Load GLB ──────────────────────────────────────────────────
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath(
-      'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/'
-    );
-    const gltfLoader = new GLTFLoader();
-    gltfLoader.setDRACOLoader(dracoLoader);
-
-    const statusEl = document.getElementById('load-status');
-    const btnEl    = document.getElementById('enter-btn');
-
-    gltfLoader.load(
-      GLB_URL,
-      (gltf) => {
-        const model = gltf.scene;
-
-// --- YOUR MANUAL CONTROLS ---
-
-        // 1. Scale the model (1.0 is the size it was in Blender)
-        // If the museum still feels tiny, increase this (e.g., 2.0 or 5.0)
-        // If the museum feels too massive, decrease this (e.g., 0.5 or 0.1)
-        const MY_SCALE = 1.0; 
-        model.scale.setScalar(MY_SCALE);
-
-        // 2. Plant the floor at exactly Y = 0 (so your camera height works properly)
-        const box = new THREE.Box3().setFromObject(model);
-        model.position.y = -box.min.y; 
-        
-        scene.add(model);
-
-        // 3. Set your exact starting position!
-        // You will need to guess-and-check these numbers by refreshing the page.
-        const startX = 0;   // Move left (negative) or right (positive)
-        const startY = 2.2; // Your height from the floor (1.6 meters is average)
-        const startZ = 10;   // Move forward (negative) or backward (positive)
-        
-        baseCamPos.set(startX, startY, startZ);
-        // ----------------------------
-        camera.position.copy(baseCamPos);
-
-        statusEl.textContent = '✓ Scan ready';
-        btnEl.textContent    = 'Tap to Enter VR';
-        btnEl.disabled       = false;
-      },
-      (xhr) => {
-        if (xhr.total) {
-          statusEl.textContent = `Loading… ${Math.round((xhr.loaded / xhr.total) * 100)}%`;
-        } else {
-          statusEl.textContent = `Loading… ${(xhr.loaded / 1048576).toFixed(1)} MB`;
-        }
-      },
-      (err) => {
-        statusEl.textContent = '⚠ Failed to load scan — see console';
-        btnEl.textContent    = 'Enter VR (scan missing)';
-        btnEl.disabled       = false;
-        console.error('GLB load error:', err);
-      }
-    );
-
-    // ── Device orientation → camera quaternion (3DoF) ─────────────
-    const camQuat     = new THREE.Quaternion();
-    const orient      = new THREE.Euler();
-    const worldAdjust = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-    const screenQ     = new THREE.Quaternion();
-    const Z_AXIS      = new THREE.Vector3(0, 0, 1);
-
-    function onOrientation(evt) {
-      if (evt.alpha == null) return;
-      orient.set(
-        THREE.MathUtils.degToRad(evt.beta  || 0),
-        THREE.MathUtils.degToRad(evt.alpha || 0),
-        THREE.MathUtils.degToRad(-(evt.gamma || 0)),
-        'YXZ'
-      );
-      camQuat.setFromEuler(orient);
-      camQuat.multiply(worldAdjust);
-      const angle = window.screen?.orientation?.angle || 0;
-      screenQ.setFromAxisAngle(Z_AXIS, -THREE.MathUtils.degToRad(angle));
-      camQuat.multiply(screenQ);
-    }
-
-    // ── Stereo render → distortion blit ───────────────────────────
-    function renderVR() {
-      const w     = renderTarget.width;
-      const h     = renderTarget.height;
-      const halfW = Math.floor(w / 2);
-
-      camera.quaternion.copy(camQuat);
-      camera.aspect = halfW / h;
-      camera.updateProjectionMatrix();
-
-      renderer.setRenderTarget(renderTarget);
-      renderer.setScissorTest(true);
-
-      // Left eye (FIXED WITH TRANSLATEX)
-      camera.position.copy(baseCamPos);
-      camera.translateX(-HALF_IPD);
-      renderer.setViewport(0, 0, halfW, h);
-      renderer.setScissor(0, 0, halfW, h);
-      renderer.render(scene, camera);
-
-      // Right eye (FIXED WITH TRANSLATEX)
-      camera.position.copy(baseCamPos);
-      camera.translateX(HALF_IPD);
-      renderer.setViewport(halfW, 0, halfW, h);
-      renderer.setScissor(halfW, 0, halfW, h);
-      renderer.render(scene, camera);
-
-      // Barrel distortion blit to screen
-      renderer.setRenderTarget(null);
-      renderer.setScissorTest(false);
-      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-      renderer.render(postScene, postCam);
-    }
-
-    // ── Render loop ───────────────────────────────────────────────
-    let vrActive = false;
-
-    (function animate() {
-      requestAnimationFrame(animate);
-      if (vrActive) {
-        renderVR();
-      } else {
-        renderer.setRenderTarget(null);
-        renderer.setScissorTest(false);
-        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.quaternion.copy(camQuat);
-        camera.position.copy(baseCamPos);
-        camera.updateProjectionMatrix();
-        renderer.render(scene, camera);
-      }
-    })();
-
-    // ── Enter VR button ───────────────────────────────────────────
-    btnEl.addEventListener('click', async () => {
-      btnEl.disabled = true;
-
-      // iOS 13+ gyroscope permission gate
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        let perm;
-        try { perm = await DeviceOrientationEvent.requestPermission(); }
-        catch (e) {
-          alert('Could not request motion access. Try again.');
-          btnEl.disabled = false; return;
-        }
-        if (perm !== 'granted') {
-          alert('Motion access denied.\n\nSettings → Safari → Motion & Orientation Access → enable, then reload.');
-          btnEl.disabled = false; return;
+        } catch (e) {
+          alert('Error requesting motion access.');
+          return;
         }
       }
-
-      window.addEventListener('deviceorientation', onOrientation, true);
-      try { await document.documentElement.requestFullscreen?.(); } catch (_) {}
-      try { await screen.orientation?.lock?.('landscape');         } catch (_) {}
-
-      document.getElementById('overlay').style.display = 'none';
-      document.getElementById('divider').style.display = 'block';
-      document.getElementById('hud').style.display     = 'block';
-      vrActive = true;
-
-      setTimeout(() => { document.getElementById('hud').style.display = 'none'; }, 4000);
+      
+      // Remove the overlay so you can click the VR icon
+      overlay.style.display = 'none';
     });
-
-    // ── Resize ────────────────────────────────────────────────────
-    window.addEventListener('resize', () => {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderTarget.setSize(
-        Math.floor(window.innerWidth  * PR),
-        Math.floor(window.innerHeight * PR)
-      );
-    });
-
   </script>
+
 </body>
 </html>
