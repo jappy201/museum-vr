@@ -78,21 +78,20 @@
     const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
     const baseCamPos = new THREE.Vector3(0, 2.2, 10);
 
-    // CLAUDE'S FIX: The perfect 3D Stereo Camera
-    const stereoCamera = new THREE.StereoCamera();
-    stereoCamera.eyeSep = 0.01; // Tune this strictly for 3D DEPTH
+    // THE FIX: Microscopic IPD so your cameras don't straddle the tiny model
+    const HALF_IPD = 0.0001;   
 
     // ── Off-screen render target ──────────────────────────────────
     const rtW = Math.floor(window.innerWidth  * PR);
     const rtH = Math.floor(window.innerHeight * PR);
     const renderTarget = new THREE.WebGLRenderTarget(rtW, rtH);
 
-    // GEMINI'S FIX: The Hardware Calibration Shader
+    // ── Barrel distortion shader ──────────────────────────────────
     const distortMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: renderTarget.texture },
         k1:       { value: 0.15 }, 
-        k2:       { value: 0.05 } // Keeps your corners straight!
+        k2:       { value: 0.05 } 
       },
       vertexShader: `
         varying vec2 vUv;
@@ -121,20 +120,17 @@
           vec2 uv = vUv;
           vec2 s;
           
-          // YOUR SLIDER: Use a negative number to push images apart, positive to pinch together
           float PAN = 0.0; 
 
           if (uv.x < 0.5) {
             s = barrel(uv, vec2(0.25, 0.5)); 
             s.x -= PAN; 
-            
             if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
           } else {
             s = barrel(uv, vec2(0.75, 0.5)); 
             s.x += PAN; 
-            
             if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
@@ -174,27 +170,31 @@
       const h  = renderTarget.height;
       const hw = Math.floor(w / 2);
 
-      camera.position.copy(baseCamPos);
       camera.quaternion.copy(camQuat);
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateMatrixWorld(); // Crucial for StereoCamera to work!
-      
-      // Build Claude's mathematically perfect left/right views
-      stereoCamera.update(camera);
+      camera.aspect = hw / h; // Each eye only gets half the screen!
+      camera.updateProjectionMatrix();
 
-      // Render to off-screen target first
+      // THE SENSOR FIX: Apply the head tracking matrix before shifting left/right!
+      camera.updateMatrixWorld();
+
       renderer.setRenderTarget(renderTarget);
       renderer.setScissorTest(true);
 
+      // Left eye (Using your successful microscopic shift)
+      camera.position.copy(baseCamPos);
+      camera.translateX(-HALF_IPD);
       renderer.setViewport(0, 0, hw, h);
       renderer.setScissor(0, 0, hw, h);
-      renderer.render(scene, stereoCamera.cameraL);
+      renderer.render(scene, camera);
 
+      // Right eye 
+      camera.position.copy(baseCamPos);
+      camera.translateX(HALF_IPD);
       renderer.setViewport(hw, 0, hw, h);
       renderer.setScissor(hw, 0, hw, h);
-      renderer.render(scene, stereoCamera.cameraR);
+      renderer.render(scene, camera);
 
-      // Slap Gemini's distortion + PAN shader on top
+      // Blit to screen
       renderer.setRenderTarget(null);
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
