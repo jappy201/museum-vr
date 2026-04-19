@@ -78,15 +78,16 @@
     const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
     const baseCamPos = new THREE.Vector3(0, 2.2, 10);
 
-    // THE FIX: Microscopic IPD so your cameras don't straddle the tiny model
-    const HALF_IPD = 0.0001;   
+    // 1. THE DEPTH FIX: Normal human eye separation
+    const stereoCamera = new THREE.StereoCamera();
+    stereoCamera.eyeSep = 0.032; 
 
     // ── Off-screen render target ──────────────────────────────────
     const rtW = Math.floor(window.innerWidth  * PR);
     const rtH = Math.floor(window.innerHeight * PR);
     const renderTarget = new THREE.WebGLRenderTarget(rtW, rtH);
 
-    // ── Barrel distortion shader ──────────────────────────────────
+    // ── Distortion & Pan Shader ───────────────────────────────────
     const distortMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: renderTarget.texture },
@@ -120,17 +121,20 @@
           vec2 uv = vUv;
           vec2 s;
           
-          float PAN = 0.0; 
+          // 2. THE ALIGNMENT FIX: Pushes the images outward to match your lenses
+          float PAN = -0.06; 
 
           if (uv.x < 0.5) {
             s = barrel(uv, vec2(0.25, 0.5)); 
             s.x -= PAN; 
+            
             if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
           } else {
             s = barrel(uv, vec2(0.75, 0.5)); 
             s.x += PAN; 
+            
             if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
@@ -170,31 +174,24 @@
       const h  = renderTarget.height;
       const hw = Math.floor(w / 2);
 
+      camera.position.copy(baseCamPos);
       camera.quaternion.copy(camQuat);
-      camera.aspect = hw / h; // Each eye only gets half the screen!
-      camera.updateProjectionMatrix();
-
-      // THE SENSOR FIX: Apply the head tracking matrix before shifting left/right!
-      camera.updateMatrixWorld();
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateMatrixWorld(); 
+      
+      stereoCamera.update(camera);
 
       renderer.setRenderTarget(renderTarget);
       renderer.setScissorTest(true);
 
-      // Left eye (Using your successful microscopic shift)
-      camera.position.copy(baseCamPos);
-      camera.translateX(-HALF_IPD);
       renderer.setViewport(0, 0, hw, h);
       renderer.setScissor(0, 0, hw, h);
-      renderer.render(scene, camera);
+      renderer.render(scene, stereoCamera.cameraL);
 
-      // Right eye 
-      camera.position.copy(baseCamPos);
-      camera.translateX(HALF_IPD);
       renderer.setViewport(hw, 0, hw, h);
       renderer.setScissor(hw, 0, hw, h);
-      renderer.render(scene, camera);
+      renderer.render(scene, stereoCamera.cameraR);
 
-      // Blit to screen
       renderer.setRenderTarget(null);
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
@@ -230,7 +227,11 @@
       GLB_URL,
       (gltf) => {
         const model = gltf.scene;
-        model.scale.setScalar(1.0);
+        
+        // 3. THE SCALE FIX: Blow the museum up so the cameras fit inside it
+        const MY_SCALE = 5.0; 
+        model.scale.setScalar(MY_SCALE);
+        
         const box = new THREE.Box3().setFromObject(model);
         model.position.y = -box.min.y;
         scene.add(model);
