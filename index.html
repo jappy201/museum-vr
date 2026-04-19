@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Museum VR - Claude's Engine</title>
+  <title>Museum VR</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
@@ -15,11 +15,16 @@
     }
     #overlay h1 { font-size: 26px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; }
     #overlay p  { font-size: 14px; color: rgba(255,255,255,0.5); max-width: 280px; line-height: 1.7; }
-    #enter-btn {
-      background: #fff; color: #000; border: none; border-radius: 50px;
-      padding: 16px 52px; font-size: 17px; font-weight: 700; cursor: pointer;
+    
+    #btn-row {
+      display: flex; gap: 15px; margin-top: 10px;
     }
-    #enter-btn:disabled { opacity: 0.4; cursor: default; }
+    .enter-btn {
+      background: #fff; color: #000; border: none; border-radius: 50px;
+      padding: 16px 32px; font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .enter-btn:disabled { opacity: 0.4; cursor: default; }
+    
     #status { font-size: 12px; color: rgba(255,255,255,0.35); min-height: 18px; }
     #divider {
       position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
@@ -37,10 +42,16 @@
 
   <div id="overlay">
     <h1>🏛️ Museum VR</h1>
-    <p>Tap below to enable motion sensors, then place your phone in your Cardboard goggles.</p>
-    <button id="enter-btn" disabled>Loading scan…</button>
+    <p>Select an exhibit below, then place your phone in your Cardboard goggles.</p>
+    
+    <div id="btn-row">
+      <button class="enter-btn" id="btn-exhibit1" disabled>Loading...</button>
+      <button class="enter-btn" id="btn-exhibit2" disabled>Loading...</button>
+    </div>
+    
     <p id="status">Connecting…</p>
   </div>
+  
   <div id="divider"></div>
   <div id="hud">MOVE YOUR HEAD TO LOOK AROUND</div>
 
@@ -61,21 +72,16 @@
 
     const GLB_URL = 'https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb';
 
-    // ── Renderer ──────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
 
-    // ── StereoEffect ──────────────────────────────────────────────
     const effect = new StereoEffect(renderer);
     effect.setSize(window.innerWidth, window.innerHeight);
+    effect.setEyeSeparation(0.005); 
 
-    // THE FIX: Lowering eye separation so the cameras don't straddle your tiny model
-    effect.setEyeSeparation(0.005);
-
-    // ── Scene ─────────────────────────────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
     scene.add(new THREE.AmbientLight(0xffffff, 2.0));
@@ -83,12 +89,9 @@
     key.position.set(5, 10, 5);
     scene.add(key);
 
-    // ── Camera ────────────────────────────────────────────────────
     const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
-    const baseCamPos = new THREE.Vector3(0, 2.2, 10);
-    camera.position.copy(baseCamPos);
+    let baseCamPos = new THREE.Vector3(0, 0, 0); 
 
-    // ── Device orientation → camera rotation ──────────────────────
     const camQuat     = new THREE.Quaternion();
     const orient      = new THREE.Euler();
     const worldAdjust = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
@@ -110,13 +113,10 @@
       camQuat.multiply(screenQ);
     }
 
-    // ── Render loop ───────────────────────────────────────────────
     let vrActive = false;
 
     (function animate() {
       requestAnimationFrame(animate);
-      
-      // Update camera orientation every frame
       camera.quaternion.copy(camQuat);
       camera.position.copy(baseCamPos);
 
@@ -129,14 +129,14 @@
       }
     })();
 
-    // ── Load GLB ──────────────────────────────────────────────────
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
     const loader = new GLTFLoader();
     loader.setDRACOLoader(dracoLoader);
 
     const statusEl = document.getElementById('status');
-    const btnEl    = document.getElementById('enter-btn');
+    const btn1     = document.getElementById('btn-exhibit1');
+    const btn2     = document.getElementById('btn-exhibit2');
 
     loader.load(
       GLB_URL,
@@ -146,9 +146,14 @@
         const box = new THREE.Box3().setFromObject(model);
         model.position.y = -box.min.y;
         scene.add(model);
+        
         statusEl.textContent = '✓ Scan ready';
-        btnEl.textContent    = 'Enter VR';
-        btnEl.disabled       = false;
+        
+        btn1.textContent = 'Exhibit 1';
+        btn1.disabled    = false;
+        
+        btn2.textContent = 'Exhibit 2';
+        btn2.disabled    = false;
       },
       (xhr) => {
         statusEl.textContent = xhr.total
@@ -157,15 +162,22 @@
       },
       (err) => {
         statusEl.textContent = '⚠ Failed to load scan';
-        btnEl.textContent    = 'Enter VR (scan missing)';
-        btnEl.disabled       = false;
+        btn1.textContent = 'Error';
+        btn2.textContent = 'Error';
         console.error('GLB load error:', err);
       }
     );
 
-    // ── Enter VR button ───────────────────────────────────────────
-    btnEl.addEventListener('click', async () => {
-      btnEl.disabled = true;
+    async function enterVRMode(exhibitNumber) {
+      btn1.disabled = true;
+      btn2.disabled = true;
+
+      // The precise spawn points
+      if (exhibitNumber === 1) {
+        baseCamPos.set(0, 2.2, 10); 
+      } else if (exhibitNumber === 2) {
+        baseCamPos.set(4.026, 2.2, -8.637); // Locked in perfectly
+      }
 
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -173,11 +185,11 @@
         try { perm = await DeviceOrientationEvent.requestPermission(); }
         catch (e) {
           alert('Could not request motion access. Try again.');
-          btnEl.disabled = false; return;
+          btn1.disabled = false; btn2.disabled = false; return;
         }
         if (perm !== 'granted') {
-          alert('Motion access denied.\n\nSettings → Safari → Motion & Orientation Access → enable, then reload.');
-          btnEl.disabled = false; return;
+          alert('Motion access denied.\n\nSettings → Safari → Motion & Orientation Access → enable.');
+          btn1.disabled = false; btn2.disabled = false; return;
         }
       }
 
@@ -191,9 +203,11 @@
       vrActive = true;
 
       setTimeout(() => { document.getElementById('hud').style.display = 'none'; }, 4000);
-    });
+    }
 
-    // ── Resize ────────────────────────────────────────────────────
+    btn1.addEventListener('click', () => enterVRMode(1));
+    btn2.addEventListener('click', () => enterVRMode(2));
+
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
