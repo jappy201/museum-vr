@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Museum VR</title>
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  
+  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+  
   <style>
     body { background: #000; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
     
@@ -25,12 +27,12 @@
 
   <div id="ios-permission-overlay">
     <h1>🏛️ Museum VR</h1>
-    <p>Tap below to enable motion sensors, then tap the VR Goggles icon in the bottom right corner.</p>
+    <p>Tap below to enable motion sensors and enter VR.</p>
     <button id="start-btn">Enable Motion Access</button>
   </div>
 
   <a-scene 
-    vr-mode-ui="enabled: true; cardboardModeEnabled: true"
+    vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
     gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/v1/decoders/;">
     
@@ -50,12 +52,12 @@
   </a-scene>
 
   <script>
-    // 3. The iOS Safari Unlock Script
     const btn = document.getElementById('start-btn');
     const overlay = document.getElementById('ios-permission-overlay');
+    const scene = document.querySelector('a-scene');
 
     btn.addEventListener('click', async () => {
-      // Ask Apple for Gyroscope Permissions
+      // 1. Ask Apple for Gyroscope Permissions
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
           const permission = await DeviceOrientationEvent.requestPermission();
@@ -69,8 +71,15 @@
         }
       }
       
-      // Remove the overlay so you can click the VR icon
+      // 2. Remove your custom overlay
       overlay.style.display = 'none';
+
+      // 3. FORCE A-FRAME TO ENTER VR STEREO MODE IMMEDIATELY
+      if (scene.hasLoaded) {
+        scene.enterVR();
+      } else {
+        scene.addEventListener('loaded', () => scene.enterVR());
+      }
     });
   </script>
 
