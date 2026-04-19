@@ -135,13 +135,13 @@
         void main() {
           vec2 uv = vUv;
           vec2 s;
-          if (uv.x < 0.5) {
-            s = barrel(uv, vec2(0.25, 0.5));
+            if (uv.x < 0.5) {
+            s = barrel(uv, vec2(0.30, 0.5)); // Shifts the left image to the right
             if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
           } else {
-            s = barrel(uv, vec2(0.75, 0.5));
+            s = barrel(uv, vec2(0.70, 0.5)); // Shifts the right image to the left
             if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
