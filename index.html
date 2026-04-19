@@ -132,16 +132,27 @@
           return center + d;
         }
 
-        void main() {
+          void main() {
           vec2 uv = vUv;
           vec2 s;
-            if (uv.x < 0.5) {
-            s = barrel(uv, vec2(0.01, 0.5)); // Shifts the left image to the right
+
+          // --- YOUR NEW PANNING CONTROL ---
+          // This physically slides the pixels across your screen!
+          // Positive number = Pinches images inward (closer together)
+          // Negative number = Pushes images outward (further apart)
+          float PAN = 0.04; 
+
+          if (uv.x < 0.5) {
+            s = barrel(uv, vec2(0.25, 0.5)); // Keep the warp dead-center
+            s.x -= PAN; // Slide the left eye's image to the right (inward)
+            
             if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
           } else {
-            s = barrel(uv, vec2(0.99, 0.5)); // Shifts the right image to the left
+            s = barrel(uv, vec2(0.75, 0.5)); // Keep the warp dead-center
+            s.x += PAN; // Slide the right eye's image to the left (inward)
+            
             if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
