@@ -11,21 +11,24 @@
     #overlay {
       position: fixed; inset: 0; background: #0a0a0a;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 18px; z-index: 999; color: #fff; text-align: center; padding: 40px;
+      gap: 15px; z-index: 999; color: #fff; text-align: center; padding: 40px;
     }
     #overlay h1 { font-size: 26px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; }
     #overlay p  { font-size: 14px; color: rgba(255,255,255,0.5); max-width: 280px; line-height: 1.7; }
     
+    /* Stacked Menu for Mobile Screens */
     #btn-row {
-      display: flex; gap: 15px; margin-top: 10px;
+      display: flex; flex-direction: column; gap: 15px; margin-top: 15px;
+      width: 100%; max-width: 320px;
     }
     .enter-btn {
       background: #fff; color: #000; border: none; border-radius: 50px;
-      padding: 16px 32px; font-size: 16px; font-weight: 700; cursor: pointer;
+      padding: 16px 20px; font-size: 15px; font-weight: 700; cursor: pointer;
+      width: 100%; box-shadow: 0 4px 15px rgba(255,255,255,0.1);
     }
-    .enter-btn:disabled { opacity: 0.4; cursor: default; }
+    .enter-btn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
     
-    #status { font-size: 12px; color: rgba(255,255,255,0.35); min-height: 18px; }
+    #status { font-size: 12px; color: rgba(255,255,255,0.35); min-height: 18px; margin-top: 10px; }
     #divider {
       position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
       background: #000; z-index: 5; display: none; pointer-events: none;
@@ -149,10 +152,11 @@
         
         statusEl.textContent = '✓ Scan ready';
         
-        btn1.textContent = 'Exhibit 1';
+        // Injecting your official exhibit names!
+        btn1.textContent = 'Hall of Ancient Egypt';
         btn1.disabled    = false;
         
-        btn2.textContent = 'Exhibit 2';
+        btn2.textContent = 'Morian Hall of Paleontology';
         btn2.disabled    = false;
       },
       (xhr) => {
@@ -172,11 +176,11 @@
       btn1.disabled = true;
       btn2.disabled = true;
 
-      // The precise spawn points
+      // Teleporting you to the exact coordinates
       if (exhibitNumber === 1) {
         baseCamPos.set(0, 2.2, 10); 
       } else if (exhibitNumber === 2) {
-        baseCamPos.set(4.026, 2.2, -8.637); // Locked in perfectly
+        baseCamPos.set(4.026, 2.2, -8.637);
       }
 
       if (typeof DeviceOrientationEvent !== 'undefined' &&
