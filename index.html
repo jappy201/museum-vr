@@ -1,87 +1,250 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Museum VR</title>
-  
-  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
-  
   <style>
-    body { background: #000; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
-    
-    #ios-permission-overlay {
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+
+    #overlay {
       position: fixed; inset: 0; background: #0a0a0a;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      z-index: 9999; color: #fff; text-align: center;
+      gap: 18px; z-index: 999; color: #fff; text-align: center; padding: 40px;
     }
-    #ios-permission-overlay h1 { font-size: 24px; letter-spacing: 2px; }
-    #ios-permission-overlay p { color: #888; font-size: 14px; margin-bottom: 20px; max-width: 280px;}
-    #start-btn {
+    #overlay h1 { font-size: 26px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; }
+    #overlay p  { font-size: 14px; color: rgba(255,255,255,0.5); max-width: 280px; line-height: 1.7; }
+    #enter-btn  {
       background: #fff; color: #000; border: none; border-radius: 50px;
-      padding: 16px 40px; font-size: 16px; font-weight: bold; cursor: pointer;
+      padding: 16px 52px; font-size: 17px; font-weight: 700; cursor: pointer;
     }
+    #enter-btn:disabled { opacity: 0.4; cursor: default; }
+    #status { font-size: 12px; color: rgba(255,255,255,0.35); min-height: 18px; }
+
+    #divider {
+      position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
+      background: #000; z-index: 5; display: none; pointer-events: none;
+    }
+    #hud {
+      position: fixed; bottom: 24px; width: 100%; text-align: center;
+      color: rgba(255,255,255,0.35); font-size: 12px; letter-spacing: 1px;
+      z-index: 10; display: none; pointer-events: none;
+    }
+    canvas { display: block; }
   </style>
 </head>
 <body>
 
-  <div id="ios-permission-overlay">
+  <div id="overlay">
     <h1>🏛️ Museum VR</h1>
-    <p>Tap below to enable motion sensors and enter VR.</p>
-    <button id="start-btn">Enable Motion Access</button>
+    <p>Tap below to enable motion sensors, then place your phone in your Cardboard goggles.</p>
+    <button id="enter-btn" disabled>Loading scan…</button>
+    <p id="status">Connecting…</p>
   </div>
 
-  <a-scene 
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false"
-    gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/v1/decoders/;">
-    
-    <a-assets>
-      <a-asset-item id="museum" src="https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb"></a-asset-item>
-    </a-assets>
+  <div id="divider"></div>
+  <div id="hud">MOVE YOUR HEAD TO LOOK AROUND</div>
 
-    <a-entity gltf-model="#museum" position="0 0 0" scale="1 1 1"></a-entity>
-
-    <a-entity position="0 1.6 10">
-      <a-camera look-controls></a-camera>
-    </a-entity>
-
-    <a-light type="ambient" intensity="2.0"></a-light>
-    <a-light type="directional" position="5 10 5" intensity="0.8"></a-light>
-
-  </a-scene>
-
-  <script>
-    const btn = document.getElementById('start-btn');
-    const overlay = document.getElementById('ios-permission-overlay');
-    const scene = document.querySelector('a-scene');
-
-    btn.addEventListener('click', async () => {
-      // 1. Ask Apple for Gyroscope Permissions
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-          const permission = await DeviceOrientationEvent.requestPermission();
-          if (permission !== 'granted') {
-            alert('Safari motion access denied. Settings → Safari → Motion & Orientation Access.');
-            return;
-          }
-        } catch (e) {
-          alert('Error requesting motion access.');
-          return;
-        }
-      }
-      
-      // 2. Remove your custom overlay
-      overlay.style.display = 'none';
-
-      // 3. FORCE A-FRAME TO ENTER VR STEREO MODE IMMEDIATELY
-      if (scene.hasLoaded) {
-        scene.enterVR();
-      } else {
-        scene.addEventListener('loaded', () => scene.enterVR());
-      }
-    });
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
   </script>
 
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+    const GLB_URL = 'https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb';
+
+    // ── Renderer ──────────────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    // ── Scene ─────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+    scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+    const key = new THREE.DirectionalLight(0xffffff, 0.8);
+    key.position.set(5, 10, 5);
+    scene.add(key);
+
+    // ── Main Camera ───────────────────────────────────────────────
+    // This is your "head" — position and orientation come from the gyroscope.
+    const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
+
+    // ─────────────────────────────────────────────────────────────
+    // ── THREE.StereoCamera — THE FIX ─────────────────────────────
+    //
+    // The original code moved the camera sideways with translateX().
+    // That just produces two slightly-shifted slices of the same wide
+    // image — which looks like a panorama, NOT stereo.
+    //
+    // THREE.StereoCamera creates ASYMMETRIC PROJECTION FRUSTUMS for
+    // each eye. The left eye's frustum leans slightly right, and the
+    // right eye's leans slightly left. That's what produces real depth.
+    //
+    // eyeSep = the distance between eyes IN SCENE UNITS.
+    // If the museum feels flat:    increase eyeSep (e.g. 0.02, 0.05)
+    // If the museum feels warped:  decrease eyeSep (e.g. 0.005)
+    // ─────────────────────────────────────────────────────────────
+    const stereoCamera = new THREE.StereoCamera();
+    stereoCamera.eyeSep = 0.01; // Start here. Tune after your first look.
+
+    // ── Starting position ─────────────────────────────────────────
+    // Adjust these the same way as before:
+    // startX: left/right, startY: height, startZ: forward/back
+    const baseCamPos = new THREE.Vector3(0, 2.2, 10);
+    camera.position.copy(baseCamPos);
+
+    // ── Device Orientation → camera quaternion ────────────────────
+    const camQuat     = new THREE.Quaternion();
+    const orient      = new THREE.Euler();
+    const worldAdjust = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+    const screenQ     = new THREE.Quaternion();
+    const Z_AXIS      = new THREE.Vector3(0, 0, 1);
+
+    function onOrientation(evt) {
+      if (evt.alpha == null) return;
+      orient.set(
+        THREE.MathUtils.degToRad(evt.beta  || 0),
+        THREE.MathUtils.degToRad(evt.alpha || 0),
+        THREE.MathUtils.degToRad(-(evt.gamma || 0)),
+        'YXZ'
+      );
+      camQuat.setFromEuler(orient);
+      camQuat.multiply(worldAdjust);
+      const angle = window.screen?.orientation?.angle || 0;
+      screenQ.setFromAxisAngle(Z_AXIS, -THREE.MathUtils.degToRad(angle));
+      camQuat.multiply(screenQ);
+    }
+
+    // ── Stereo render ─────────────────────────────────────────────
+    function renderVR() {
+      const w  = window.innerWidth;
+      const h  = window.innerHeight;
+      const hw = Math.floor(w / 2);
+
+      // Point the main camera where your head is looking
+      camera.position.copy(baseCamPos);
+      camera.quaternion.copy(camQuat);
+      // Each eye only uses half the screen width
+      camera.aspect = hw / h;
+      camera.updateProjectionMatrix();
+
+      // StereoCamera reads the main camera and builds proper
+      // left/right asymmetric frustums from it
+      stereoCamera.update(camera);
+
+      renderer.setScissorTest(true);
+
+      // Left eye → left half of screen
+      renderer.setViewport(0, 0, hw, h);
+      renderer.setScissor(0, 0, hw, h);
+      renderer.render(scene, stereoCamera.cameraL);
+
+      // Right eye → right half of screen
+      renderer.setViewport(hw, 0, hw, h);
+      renderer.setScissor(hw, 0, hw, h);
+      renderer.render(scene, stereoCamera.cameraR);
+
+      renderer.setScissorTest(false);
+    }
+
+    // ── Render loop ───────────────────────────────────────────────
+    let vrActive = false;
+    (function animate() {
+      requestAnimationFrame(animate);
+      if (vrActive) {
+        renderVR();
+      } else {
+        // Preview mode: single camera, full screen
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.quaternion.copy(camQuat);
+        camera.position.copy(baseCamPos);
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera);
+      }
+    })();
+
+    // ── Load GLB ──────────────────────────────────────────────────
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
+
+    const statusEl = document.getElementById('status');
+    const btnEl    = document.getElementById('enter-btn');
+
+    loader.load(
+      GLB_URL,
+      (gltf) => {
+        const model = gltf.scene;
+        model.scale.setScalar(1.0);               // adjust if museum feels too big/small
+        const box = new THREE.Box3().setFromObject(model);
+        model.position.y = -box.min.y;            // plant floor at Y=0
+        scene.add(model);
+        statusEl.textContent = '✓ Scan ready';
+        btnEl.textContent    = 'Enter VR';
+        btnEl.disabled       = false;
+      },
+      (xhr) => {
+        statusEl.textContent = xhr.total
+          ? `Loading… ${Math.round(xhr.loaded / xhr.total * 100)}%`
+          : `Loading… ${(xhr.loaded / 1048576).toFixed(1)} MB`;
+      },
+      (err) => {
+        statusEl.textContent = '⚠ Failed to load scan';
+        btnEl.textContent    = 'Enter VR (scan missing)';
+        btnEl.disabled       = false;
+        console.error('GLB load error:', err);
+      }
+    );
+
+    // ── Enter VR button ───────────────────────────────────────────
+    btnEl.addEventListener('click', async () => {
+      btnEl.disabled = true;
+
+      // iOS 13+ gyroscope permission
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        let perm;
+        try { perm = await DeviceOrientationEvent.requestPermission(); }
+        catch (e) {
+          alert('Could not request motion access. Try again.');
+          btnEl.disabled = false; return;
+        }
+        if (perm !== 'granted') {
+          alert('Motion access denied.\n\nSettings → Safari → Motion & Orientation Access → enable, then reload.');
+          btnEl.disabled = false; return;
+        }
+      }
+
+      window.addEventListener('deviceorientation', onOrientation, true);
+      try { await document.documentElement.requestFullscreen?.(); } catch (_) {}
+      try { await screen.orientation?.lock?.('landscape');         } catch (_) {}
+
+      document.getElementById('overlay').style.display  = 'none';
+      document.getElementById('divider').style.display  = 'block';
+      document.getElementById('hud').style.display      = 'block';
+      vrActive = true;
+
+      setTimeout(() => { document.getElementById('hud').style.display = 'none'; }, 4000);
+    });
+
+    // ── Resize ────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+  </script>
 </body>
 </html>
