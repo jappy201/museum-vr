@@ -106,8 +106,8 @@
     const distortMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: renderTarget.texture },
-        k1:       { value: 0.25 },
-        k2:       { value: 0.05 }
+        k1:       { value: 0.15 },
+        k2:       { value: 0.00 }
       },
       vertexShader: `
         varying vec2 vUv;
