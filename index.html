@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Museum VR</title>
+  <title>Museum VR Calibrator</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; width: 100vw; height: 100vh; font-family: -apple-system, sans-serif; }
@@ -25,11 +25,16 @@
       position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
       background: #000; z-index: 5; display: none; pointer-events: none;
     }
+    
+    /* BIG Calibration HUD */
     #hud {
-      position: fixed; bottom: 24px; width: 100%; text-align: center;
-      color: rgba(255,255,255,0.35); font-size: 12px; letter-spacing: 1px;
-      z-index: 10; display: none; pointer-events: none;
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; color: #fff; font-size: 24px; font-weight: bold; letter-spacing: 1px;
+      z-index: 10; display: none; pointer-events: none; text-shadow: 0px 4px 10px rgba(0,0,0,1);
+      width: 100%;
     }
+    .hud-sub { font-size: 14px; color: #aaa; margin-top: 10px; }
+    
     canvas { display: block; }
   </style>
 </head>
@@ -37,13 +42,16 @@
 
   <div id="overlay">
     <h1>🏛️ Museum VR</h1>
-    <p>Tap below to enable motion sensors, then place your phone in your Cardboard goggles.</p>
+    <p>Tap below, put your phone in the headset.<br><br>The image will slide back and forth. <b>Tap the screen when it aligns perfectly with your eyes!</b></p>
     <button id="enter-btn" disabled>Loading scan…</button>
     <p id="status">Connecting…</p>
   </div>
 
   <div id="divider"></div>
-  <div id="hud">MOVE YOUR HEAD TO LOOK AROUND</div>
+  <div id="hud">
+    <div id="hud-pan">SWEEPING...</div>
+    <div class="hud-sub">Tap screen when image is centered!</div>
+  </div>
 
   <script type="importmap">
   {
@@ -78,21 +86,21 @@
     const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
     const baseCamPos = new THREE.Vector3(0, 2.2, 10);
 
-    // 1. THE DEPTH FIX: Normal human eye separation
+    // Gentler 3D depth to prevent straddling
     const stereoCamera = new THREE.StereoCamera();
-    stereoCamera.eyeSep = 0.032; 
+    stereoCamera.eyeSep = 0.005; 
 
-    // ── Off-screen render target ──────────────────────────────────
     const rtW = Math.floor(window.innerWidth  * PR);
     const rtH = Math.floor(window.innerHeight * PR);
     const renderTarget = new THREE.WebGLRenderTarget(rtW, rtH);
 
-    // ── Distortion & Pan Shader ───────────────────────────────────
+    // ── DISTORTION SHADER WITH LIVE PAN UNIFORM ──
     const distortMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: renderTarget.texture },
         k1:       { value: 0.15 }, 
-        k2:       { value: 0.05 } 
+        k2:       { value: 0.05 },
+        pan:      { value: 0.0 } // Controlled by the sweeper!
       },
       vertexShader: `
         varying vec2 vUv;
@@ -105,6 +113,7 @@
         uniform sampler2D tDiffuse;
         uniform float k1;
         uniform float k2;
+        uniform float pan;
         varying vec2 vUv;
 
         vec2 barrel(vec2 uv, vec2 center) {
@@ -121,20 +130,15 @@
           vec2 uv = vUv;
           vec2 s;
           
-          // 2. THE ALIGNMENT FIX: Pushes the images outward to match your lenses
-          float PAN = -0.06; 
-
           if (uv.x < 0.5) {
             s = barrel(uv, vec2(0.25, 0.5)); 
-            s.x -= PAN; 
-            
+            s.x -= pan; 
             if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
           } else {
             s = barrel(uv, vec2(0.75, 0.5)); 
-            s.x += PAN; 
-            
+            s.x += pan; 
             if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
               gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
             }
@@ -169,6 +173,13 @@
       camQuat.multiply(screenQ);
     }
 
+    // ── SWEEPER VARIABLES ──
+    let vrActive = false;
+    let sweeping = false;
+    let sweepDir = 1;
+    let panSpeed = 0.03; // Slides slightly every second
+    let lastTime = performance.now();
+
     function renderVR() {
       const w  = renderTarget.width;
       const h  = renderTarget.height;
@@ -198,10 +209,23 @@
       renderer.render(postScene, postCam);
     }
 
-    let vrActive = false;
     (function animate() {
       requestAnimationFrame(animate);
+      
       if (vrActive) {
+        // Auto-Sweep Logic
+        if (sweeping) {
+          let now = performance.now();
+          let dt = (now - lastTime) / 1000;
+          lastTime = now;
+          
+          distortMat.uniforms.pan.value += (panSpeed * sweepDir * dt);
+          
+          // Bounce back and forth between extreme alignments
+          if (distortMat.uniforms.pan.value > 0.15 || distortMat.uniforms.pan.value < -0.15) {
+            sweepDir *= -1; 
+          }
+        }
         renderVR();
       } else {
         renderer.setRenderTarget(null);
@@ -227,16 +251,12 @@
       GLB_URL,
       (gltf) => {
         const model = gltf.scene;
-        
-        // 3. THE SCALE FIX: Blow the museum up so the cameras fit inside it
-        const MY_SCALE = 5.0; 
-        model.scale.setScalar(MY_SCALE);
-        
+        model.scale.setScalar(1.0); // Restored safe scale
         const box = new THREE.Box3().setFromObject(model);
         model.position.y = -box.min.y;
         scene.add(model);
         statusEl.textContent = '✓ Scan ready';
-        btnEl.textContent    = 'Enter VR';
+        btnEl.textContent    = 'Enter VR Calibration';
         btnEl.disabled       = false;
       },
       (xhr) => {
@@ -248,9 +268,41 @@
         statusEl.textContent = '⚠ Failed to load scan';
         btnEl.textContent    = 'Enter VR (scan missing)';
         btnEl.disabled       = false;
-        console.error('GLB load error:', err);
       }
     );
+
+    // ── TAP TO LOCK LOGIC ──
+    window.addEventListener('touchstart', (e) => {
+      if (sweeping) {
+        sweeping = false; // Freeze the image!
+        const finalPan = distortMat.uniforms.pan.value.toFixed(3);
+        
+        // Update the big text so you can read it when you take the headset off
+        document.getElementById('hud').style.background = "rgba(0,0,0,0.8)";
+        document.getElementById('hud').style.padding = "20px";
+        document.getElementById('hud').innerHTML = 
+          `<span style="color:#0f0;">LOCKED!</span><br><br>
+           Your perfect PAN is:<br>
+           <span style="font-size:40px; color:#fff;">${finalPan}</span><br><br>
+           <span style="font-size:14px; color:#aaa;">(Take off headset and tell Gemini)</span>`;
+      }
+    });
+
+    // ── CLICK TO LOCK LOGIC (Just in case you click instead of touch) ──
+    window.addEventListener('mousedown', (e) => {
+      if (e.target === btnEl) return; // Don't trigger on the start button
+      if (sweeping) {
+        sweeping = false;
+        const finalPan = distortMat.uniforms.pan.value.toFixed(3);
+        document.getElementById('hud').style.background = "rgba(0,0,0,0.8)";
+        document.getElementById('hud').style.padding = "20px";
+        document.getElementById('hud').innerHTML = 
+          `<span style="color:#0f0;">LOCKED!</span><br><br>
+           Your perfect PAN is:<br>
+           <span style="font-size:40px; color:#fff;">${finalPan}</span><br><br>
+           <span style="font-size:14px; color:#aaa;">(Take off headset and tell Gemini)</span>`;
+      }
+    });
 
     btnEl.addEventListener('click', async () => {
       btnEl.disabled = true;
@@ -276,9 +328,10 @@
       document.getElementById('overlay').style.display  = 'none';
       document.getElementById('divider').style.display  = 'block';
       document.getElementById('hud').style.display      = 'block';
+      
       vrActive = true;
-
-      setTimeout(() => { document.getElementById('hud').style.display = 'none'; }, 4000);
+      sweeping = true;
+      lastTime = performance.now();
     });
 
     window.addEventListener('resize', () => {
