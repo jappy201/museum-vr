@@ -6,7 +6,7 @@
   <title>Museum VR</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+    body { background: #000; overflow: hidden; width: 100vw; height: 100vh; font-family: -apple-system, sans-serif; }
 
     #overlay {
       position: fixed; inset: 0; background: #0a0a0a;
@@ -21,7 +21,6 @@
     }
     #enter-btn:disabled { opacity: 0.4; cursor: default; }
     #status { font-size: 12px; color: rgba(255,255,255,0.35); min-height: 18px; }
-
     #divider {
       position: fixed; top: 0; left: 50%; width: 2px; height: 100%;
       background: #000; z-index: 5; display: none; pointer-events: none;
@@ -62,14 +61,13 @@
 
     const GLB_URL = 'https://raw.githubusercontent.com/jappy201/museum-vr/main/ClaudeFinalCompress2.glb';
 
-    // ── Renderer ──────────────────────────────────────────────────
+    const PR = Math.min(window.devicePixelRatio, 2);
     const renderer = new THREE.WebGLRenderer({ antialias: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(PR);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
 
-    // ── Scene ─────────────────────────────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111111);
     scene.add(new THREE.AmbientLight(0xffffff, 2.0));
@@ -77,35 +75,79 @@
     key.position.set(5, 10, 5);
     scene.add(key);
 
-    // ── Main Camera ───────────────────────────────────────────────
-    // This is your "head" — position and orientation come from the gyroscope.
     const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.01, 1000);
-
-    // ─────────────────────────────────────────────────────────────
-    // ── THREE.StereoCamera — THE FIX ─────────────────────────────
-    //
-    // The original code moved the camera sideways with translateX().
-    // That just produces two slightly-shifted slices of the same wide
-    // image — which looks like a panorama, NOT stereo.
-    //
-    // THREE.StereoCamera creates ASYMMETRIC PROJECTION FRUSTUMS for
-    // each eye. The left eye's frustum leans slightly right, and the
-    // right eye's leans slightly left. That's what produces real depth.
-    //
-    // eyeSep = the distance between eyes IN SCENE UNITS.
-    // If the museum feels flat:    increase eyeSep (e.g. 0.02, 0.05)
-    // If the museum feels warped:  decrease eyeSep (e.g. 0.005)
-    // ─────────────────────────────────────────────────────────────
-    const stereoCamera = new THREE.StereoCamera();
-    stereoCamera.eyeSep = 0.01; // Start here. Tune after your first look.
-
-    // ── Starting position ─────────────────────────────────────────
-    // Adjust these the same way as before:
-    // startX: left/right, startY: height, startZ: forward/back
     const baseCamPos = new THREE.Vector3(0, 2.2, 10);
-    camera.position.copy(baseCamPos);
 
-    // ── Device Orientation → camera quaternion ────────────────────
+    // CLAUDE'S FIX: The perfect 3D Stereo Camera
+    const stereoCamera = new THREE.StereoCamera();
+    stereoCamera.eyeSep = 0.01; // Tune this strictly for 3D DEPTH
+
+    // ── Off-screen render target ──────────────────────────────────
+    const rtW = Math.floor(window.innerWidth  * PR);
+    const rtH = Math.floor(window.innerHeight * PR);
+    const renderTarget = new THREE.WebGLRenderTarget(rtW, rtH);
+
+    // GEMINI'S FIX: The Hardware Calibration Shader
+    const distortMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: renderTarget.texture },
+        k1:       { value: 0.15 }, 
+        k2:       { value: 0.05 } // Keeps your corners straight!
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float k1;
+        uniform float k2;
+        varying vec2 vUv;
+
+        vec2 barrel(vec2 uv, vec2 center) {
+          vec2 d = uv - center;
+          d.x *= 2.0;                        
+          float r2 = dot(d, d);
+          float r4 = r2 * r2;
+          d /= (1.0 + k1 * r2 + k2 * r4);   
+          d.x /= 2.0;
+          return center + d;
+        }
+
+        void main() {
+          vec2 uv = vUv;
+          vec2 s;
+          
+          // YOUR SLIDER: Use a negative number to push images apart, positive to pinch together
+          float PAN = 0.0; 
+
+          if (uv.x < 0.5) {
+            s = barrel(uv, vec2(0.25, 0.5)); 
+            s.x -= PAN; 
+            
+            if (s.x < 0.0 || s.x > 0.5 || s.y < 0.0 || s.y > 1.0) {
+              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
+            }
+          } else {
+            s = barrel(uv, vec2(0.75, 0.5)); 
+            s.x += PAN; 
+            
+            if (s.x < 0.5 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
+              gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
+            }
+          }
+          gl_FragColor = texture2D(tDiffuse, s);
+        }
+      `
+    });
+
+    const postScene = new THREE.Scene();
+    const postCam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), distortMat));
+
     const camQuat     = new THREE.Quaternion();
     const orient      = new THREE.Euler();
     const worldAdjust = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
@@ -127,46 +169,47 @@
       camQuat.multiply(screenQ);
     }
 
-    // ── Stereo render ─────────────────────────────────────────────
     function renderVR() {
-      const w  = window.innerWidth;
-      const h  = window.innerHeight;
+      const w  = renderTarget.width;
+      const h  = renderTarget.height;
       const hw = Math.floor(w / 2);
 
-      // Point the main camera where your head is looking
       camera.position.copy(baseCamPos);
       camera.quaternion.copy(camQuat);
-      // Each eye only uses half the screen width
-      camera.aspect = hw / h;
-      camera.updateProjectionMatrix();
-
-      // StereoCamera reads the main camera and builds proper
-      // left/right asymmetric frustums from it
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateMatrixWorld(); // Crucial for StereoCamera to work!
+      
+      // Build Claude's mathematically perfect left/right views
       stereoCamera.update(camera);
 
+      // Render to off-screen target first
+      renderer.setRenderTarget(renderTarget);
       renderer.setScissorTest(true);
 
-      // Left eye → left half of screen
       renderer.setViewport(0, 0, hw, h);
       renderer.setScissor(0, 0, hw, h);
       renderer.render(scene, stereoCamera.cameraL);
 
-      // Right eye → right half of screen
       renderer.setViewport(hw, 0, hw, h);
       renderer.setScissor(hw, 0, hw, h);
       renderer.render(scene, stereoCamera.cameraR);
 
+      // Slap Gemini's distortion + PAN shader on top
+      renderer.setRenderTarget(null);
       renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+      renderer.render(postScene, postCam);
     }
 
-    // ── Render loop ───────────────────────────────────────────────
     let vrActive = false;
     (function animate() {
       requestAnimationFrame(animate);
       if (vrActive) {
         renderVR();
       } else {
-        // Preview mode: single camera, full screen
+        renderer.setRenderTarget(null);
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.quaternion.copy(camQuat);
         camera.position.copy(baseCamPos);
@@ -175,7 +218,6 @@
       }
     })();
 
-    // ── Load GLB ──────────────────────────────────────────────────
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/');
     const loader = new GLTFLoader();
@@ -188,9 +230,9 @@
       GLB_URL,
       (gltf) => {
         const model = gltf.scene;
-        model.scale.setScalar(1.0);               // adjust if museum feels too big/small
+        model.scale.setScalar(1.0);
         const box = new THREE.Box3().setFromObject(model);
-        model.position.y = -box.min.y;            // plant floor at Y=0
+        model.position.y = -box.min.y;
         scene.add(model);
         statusEl.textContent = '✓ Scan ready';
         btnEl.textContent    = 'Enter VR';
@@ -209,11 +251,9 @@
       }
     );
 
-    // ── Enter VR button ───────────────────────────────────────────
     btnEl.addEventListener('click', async () => {
       btnEl.disabled = true;
 
-      // iOS 13+ gyroscope permission
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function') {
         let perm;
@@ -240,11 +280,13 @@
       setTimeout(() => { document.getElementById('hud').style.display = 'none'; }, 4000);
     });
 
-    // ── Resize ────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
       renderer.setSize(window.innerWidth, window.innerHeight);
+      renderTarget.setSize(
+        Math.floor(window.innerWidth  * PR),
+        Math.floor(window.innerHeight * PR)
+      );
     });
-
   </script>
 </body>
 </html>
